@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>monoso</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+:root{
+  --bg:#f5f5f7;
+  --glass:rgba(255,255,255,.72);
+  --text:#1d1d1f;
+  --sub:#8e8e93;
+  --input:#ffffff;
+  --radius:18px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#000000;
+    --glass:rgba(28,28,30,.7);
+    --text:#f5f5f7;
+    --input:#1c1c1e;
+  }
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{
+  font-family:'Inter',-apple-system,"SF Pro Display",sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  display:grid;
+  place-content:center;
+  min-height:100vh;
+  padding:24px 16px;
+}
+.wrapper{width:100%;max-width:480px}
+header{text-align:center;margin-bottom:12px}
+header h1{font-size:32px;font-weight:600;letter-spacing:-.5px}
+.subline{font-size:11px;color:var(--sub);letter-spacing:.5px;margin-bottom:20px;text-align:center}
+.search-area{background:var(--glass);backdrop-filter:blur(25px);-webkit-backdrop-filter:blur(25px);padding:10px 14px;border-radius:30px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.05);border:1px solid rgba(255,255,255,.1)}
+#current-tag{padding:6px 14px;border-radius:20px;color:#fff;font-size:14px;font-weight:500}
+input{flex:1;border:none;background:transparent;font-size:17px;font-weight:400;color:var(--text);outline:none}
+#goBtn{background:var(--text);color:var(--bg);border:none;border-radius:20px;padding:8px 16px;font-size:14px;font-weight:500;cursor:pointer}
+#copyBtn{background:var(--sub);color:var(--bg);border:none;border-radius:20px;padding:8px 14px;font-size:13px;margin-left:6px;cursor:pointer}
+.history{width:100%;overflow-x:auto;white-space:nowrap;margin:12px 0;-webkit-overflow-scrolling:touch}
+.history::-webkit-scrollbar{display:none}
+.history span{display:inline-block;background:var(--glass);padding:6px 12px;border-radius:16px;font-size:13px;margin-right:8px;cursor:pointer}
+.history span:active{background:var(--input)}
+.bento-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.card{background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-radius:var(--radius);padding:20px 8px;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;transition:all .3s;box-shadow:0 4px 20px rgba(0,0,0,.05);border:1px solid rgba(255,255,255,.08)}
+.card:active{transform:scale(.94)}
+.card.active{background:var(--input);box-shadow:0 6px 24px rgba(0,0,0,.1)}
+.icon{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:600;color:#fff}
+.label{font-size:12px;font-weight:500;color:var(--text);opacity:.8}
+.card:focus{outline:2px solid rgba(100,150,250,.6);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <header>
+    <h1>monoso</h1>
+    <div class="subline">远离信息噪音，直达搜索需求</div>
+  </header>
+
+  <div class="search-area" role="search" aria-label="搜索区域">
+    <div id="current-tag" aria-live="polite">小红书</div>
+    <input id="searchInput" placeholder="Search…" autocomplete="off" enterkeyhint="search" aria-label="搜索关键词">
+    <button id="goBtn" type="button">Go</button>
+    <button id="copyBtn" type="button">Copy</button>
+  </div>
+
+  <div class="history" id="history" aria-label="历史搜索"></div>
+
+  <div class="bento-grid" id="grid" role="list"></div>
+</div>
+
+<script>
+/* ====== 数据与应用列表 ====== */
+/* 如需维护方便，后续可将 apps 移到独立 JSON 文件并异步加载 */
+const apps=[
+  {name:'小红书',   sym:'红', col:'#FF2442', url:'https://www.xiaohongshu.com/search_result?keyword=%s'},
+  {name:'即刻',     sym:'即', col:'#FFE411', textCol:'#000', url:'https://web.okjike.com/search?q=%s'},
+  {name:'知乎',     sym:'知', col:'#0084FF', url:'https://www.zhihu.com/search?type=content&q=%s'},
+  {name:'微博',     sym:'博', col:'#E6162D', url:'https://s.weibo.com/weibo?q=%s'},
+  {name:'豆瓣',     sym:'豆', col:'#007722', url:'https://www.douban.com/search?q=%s'},
+  {name:'美团',     sym:'美', col:'#FFC300', textCol:'#000', url:'https://i.meituan.com/s/s?w=%s'},
+  {name:'淘宝',     sym:'淘', col:'#FF6A00', url:'https://s.taobao.com/search?q=%s'},
+  {name:'京东',     sym:'京', col:'#E1251B', url:'https://search.jd.com/Search?keyword=%s'},
+  {name:'Safari',   sym:'S', col:'#71C9F4', textCol:'#000', url:'https://www.google.com/search?q=%s'},
+  {name:'豆包',     sym:'包', col:'#8A2BE2', url:'https://www.doubao.com/search?keyword=%s'},
+  {name:'DeepSeek', sym:'D', col:'#4d6bfe', url:'https://chat.deepseek.com/search?q=%s'},
+  {name:'Kimi',     sym:'K', col:'#ff2a6d', url:'https://kimi.moonshot.cn'}   /* 只到首页，暂无占位符 */
+];
+
+/* ====== 历史记录（localStorage） ====== */
+const MAX_HIST=12;
+let history=JSON.parse(localStorage.getItem('monoso_hist')||'[]');
+function saveHist(){localStorage.setItem('monoso_hist',JSON.stringify(history));}
+
+/* 使用安全的 DOM API 构建历史列表，避免 innerHTML 注入 */
+function renderHist(){
+  const box=document.getElementById('history');
+  box.innerHTML=''; // 清空
+  history.forEach((h,i)=>{
+    const sp = document.createElement('span');
+    sp.dataset.i = i;
+    sp.textContent = h; // 使用 textContent 防止 HTML 注入
+    sp.tabIndex = 0;
+    sp.title = '点击搜索，按住右键删除';
+    sp.addEventListener('click', ()=>{ input.value = h; jump(); });
+    sp.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') { input.value = h; jump(); }});
+    sp.addEventListener('contextmenu', e=>{
+      e.preventDefault();
+      history.splice(i,1);
+      saveHist();
+      renderHist();
+    });
+    box.appendChild(sp);
+  });
+}
+function addHist(kw){ if(!kw) return; history = history.filter(h => h !== kw); history.unshift(kw); if(history.length>MAX_HIST) history.pop(); saveHist(); renderHist(); }
+renderHist();
+
+/* ====== 卡片初始化与可访问性支持 ====== */
+let currentIndex=0;
+const grid=document.getElementById('grid');
+const input=document.getElementById('searchInput');
+const tag=document.getElementById('current-tag');
+const goBtn=document.getElementById('goBtn');
+const copyBtn=document.getElementById('copyBtn');
+
+function initGrid(){
+  apps.forEach((app,i)=>{
+    const card=document.createElement('div'); card.className='card';
+    card.setAttribute('role','button');
+    card.tabIndex = 0;
+    card.setAttribute('aria-pressed','false');
+    card.innerHTML=`<div class="icon" style="background:${app.col};color:${app.textCol||'#fff'}">${app.sym}</div><div class="label">${app.name}</div>`;
+    card.addEventListener('click', ()=> select(i) );
+    card.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(i); }
+    });
+    grid.appendChild(card);
+  });
+  select(0);
+}
+function select(idx){
+  currentIndex=idx; const app=apps[idx];
+  document.querySelectorAll('.card').forEach((c,i)=>{
+    const active = i===idx;
+    c.classList.toggle('active', active);
+    c.setAttribute('aria-pressed', String(active));
+    if(active) c.setAttribute('aria-current','true'); else c.removeAttribute('aria-current');
+  });
+  tag.innerText=app.name; tag.style.backgroundColor=app.col; tag.style.color=app.textCol||'#fff';
+  input.placeholder=`在 ${app.name} 搜索…`; input.focus();
+}
+
+/* ====== 跳转 + 复制（安全与现代 API） ====== */
+function jump(){
+  const kw=input.value.trim();
+  if(!kw) return;
+  addHist(kw);
+  const target = apps[currentIndex].url.replace('%s', encodeURIComponent(kw));
+  // 使用带 rel 的 a 元素以阻断 opener，避免 window.opener 攻击
+  const a = document.createElement('a');
+  a.href = target;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  // 不显示在 DOM 中也能触发
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+/* 首选 Clipboard API，失败时回退到 textarea + execCommand */
+async function copyKeyword(){
+  const kw = input.value.trim();
+  if(!kw) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(kw);
+      alert('关键词已复制，可手动粘贴到对应搜索框');
+      return;
+    } catch (err) {
+      // 如果失败则回退
+      fallbackCopy(kw);
+      return;
+    }
+  }
+  fallbackCopy(kw);
+}
+function fallbackCopy(text){
+  const ta=document.createElement('textarea');
+  ta.value=text;
+  ta.style.position='fixed';
+  ta.style.left='-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    alert('关键词已复制，可手动粘贴到对应搜索框');
+  } catch (e) {
+    alert('复制失败，请手动复制：' + text);
+  }
+  document.body.removeChild(ta);
+}
+
+/* 事件注册：更现代的方式 */
+goBtn.addEventListener('click', jump);
+copyBtn.addEventListener('click', copyKeyword);
+input.addEventListener('keydown', e => { if(e.key === 'Enter') jump(); });
+
+initGrid();
+</script>
+</body>
+</html>
